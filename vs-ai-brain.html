@@ -162,8 +162,10 @@ textarea.input{resize:vertical;min-height:70px}
 .linkcard .hint{margin:8px 0 0}
 .linkrow{display:flex;gap:8px}
 .linkrow .input{min-width:0;flex:1}
-.linkcard details{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
-.linkcard summary{cursor:pointer;color:var(--muted);font-size:13px}
+.textcard{margin-top:14px}
+.textcard textarea{min-height:130px}
+.textrow{display:flex;align-items:center;gap:8px}
+.textrow .grow{flex:1}
 .docrow a.src{color:var(--synapse);font-family:var(--f-mono);font-size:11.5px;overflow-wrap:anywhere;text-decoration:none}
 .docrow a.src:hover{text-decoration:underline}
 .qitem{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
@@ -360,14 +362,16 @@ pre.code{background:var(--bg);border:1px solid var(--line);border-radius:8px;pad
               <button class="btn primary" type="submit">Learn</button>
             </form>
             <p class="hint" id="web-hint">BRAIN opens the page in Claude's built-in browser, reads its text and learns it like a document. You can also paste a link anywhere on this page.</p>
-            <details id="paste-box">
-              <summary>Paste page text instead</summary>
-              <div class="field" style="margin-top:8px"><label class="label" for="paste-url">Page link (used as the source reference)</label>
-                <input class="input" id="paste-url" type="text" inputmode="url" spellcheck="false" placeholder="https://…"></div>
-              <div class="field"><label class="label" for="paste-text">Page text</label>
-                <textarea class="input" id="paste-text" placeholder="Open the page, select all, copy, and paste the text here."></textarea></div>
-              <button class="btn" id="paste-learn" type="button">Learn this text</button>
-            </details>
+          </div>
+          <div class="card textcard" id="text-card">
+            <div class="card-h"><h3>Learn from text</h3></div>
+            <div class="field"><label class="label" for="text-title">Title (optional)</label>
+              <input class="input" id="text-title" placeholder="e.g. Meeting notes, 12 Nov" autocomplete="off"></div>
+            <div class="field"><label class="label" for="text-body">Text</label>
+              <textarea class="input" id="text-body" rows="6" placeholder="Type or paste any text: notes, an email, an article, a web page you copied…"></textarea></div>
+            <div class="field"><label class="label" for="text-url">Source link (optional)</label>
+              <input class="input" id="text-url" type="text" inputmode="url" spellcheck="false" placeholder="https://… if the text came from a web page" autocomplete="off"></div>
+            <div class="textrow"><span class="hint" id="text-count">0 characters</span><div class="grow"></div><button class="btn primary" id="text-learn" type="button">Learn this text</button></div>
           </div>
           <div class="queue" id="queue"></div>
         </div>
@@ -728,7 +732,7 @@ function overlap(a, b) {
 
 /* ------------------------------ Document extraction ------------------------------ */
 const EXT = (name) => (name.split(".").pop() || "").toLowerCase();
-const SUPPORTED = { web: "Web page", pdf: "PDF", txt: "Text", md: "Markdown", markdown: "Markdown", csv: "CSV", tsv: "TSV", json: "JSON", docx: "Word", xlsx: "Excel", xls: "Excel", ods: "Spreadsheet" };
+const SUPPORTED = { web: "Web page", note: "Text note", pdf: "PDF", txt: "Text", md: "Markdown", markdown: "Markdown", csv: "CSV", tsv: "TSV", json: "JSON", docx: "Word", xlsx: "Excel", xls: "Excel", ods: "Spreadsheet" };
 function libsStatus() {
   return {
     pdf: !!(window.pdfjsLib),
@@ -936,7 +940,7 @@ Rules: use only information stated in the passages; never invent. Up to 14 facts
 function cleanList(arr, max) { return (Array.isArray(arr) ? arr : []).filter(x => x && typeof x === "object").slice(0, max); }
 
 async function learnFile(file, q) {
-  const doc = { id: "d" + uid36(), name: file.name, type: file.url ? "web" : EXT(file.name), size: file.size, uploadedAt: now(), status: "processing" };
+  const doc = { id: "d" + uid36(), name: file.name, type: file.url ? "web" : file.note ? "note" : EXT(file.name), size: file.size, uploadedAt: now(), status: "processing" };
   if (file.url) doc.url = file.url;
   S.meta.uploads = (S.meta.uploads || 0) + 1;
   q.set("reading", .03, "Extracting text…");
@@ -1166,7 +1170,7 @@ function queueItem(file) {
   const el = h("div", { class: "qitem" },
     h("div", { class: "top" }, h("span", { class: "name", text: file.link || file.name }), h("span", { class: "stage", text: "waiting" })),
     h("div", { class: "bar" }, h("i")),
-    h("div", { class: "qmsg", text: file.link ? "Web link" : file.url ? `Pasted text from ${file.url}` : `${SUPPORTED[EXT(file.name)] || "Unsupported"} · ${fmtBytes(file.size)}` }));
+    h("div", { class: "qmsg", text: file.link ? "Web link" : file.url ? `Pasted text from ${file.url}` : file.note ? `Typed or pasted text · ${fmtBytes(file.size)}` : `${SUPPORTED[EXT(file.name)] || "Unsupported"} · ${fmtBytes(file.size)}` }));
   $("#queue").prepend(el);
   const stage = $(".stage", el), bar = $(".bar i", el), msg = $(".qmsg", el);
   return {
@@ -1210,8 +1214,8 @@ function findTabId(r) {
 function browserError(e) {
   const c = e && e.code;
   if (c === "server_not_connected" || c === "not_granted" || c === "capability_disabled" || c === "capability_removed")
-    return "Opening links needs the Claude desktop app: open this artifact there and BRAIN will use Claude's built-in browser. Here, open the page yourself and paste its text in “Paste page text” instead.";
-  if (c === "not_in_manifest") return "Browser access for this artifact is turned off or was declined. Turn it on from the artifact's Permissions menu, or paste the page text instead.";
+    return "Opening links needs the Claude desktop app: open this artifact there and BRAIN will use Claude's built-in browser. Here, open the page yourself and copy its text into “Learn from text” below, with the link as the source.";
+  if (c === "not_in_manifest") return "Browser access for this artifact is turned off or was declined. Turn it on from the artifact's Permissions menu, or copy the page text into “Learn from text”.";
   if (c === "cancelled") return "The visit was declined in the desktop app.";
   if (c === "approval_required") return "The desktop app needs your approval to open this site. Try again and approve the request.";
   if (c === "tool_error") return "The browser couldn't open the page: " + clip(e.message || "", 200);
@@ -1243,6 +1247,12 @@ async function fetchLink(url, q) {
 function webSource(url, text, title, how) {
   const segs = linesToSegments(text, 40).map((s, i) => ({ section: `part ${i + 1} (${s.section})`, text: s.text }));
   return { name: pageName(url, title), url, size: enc.encode(text).length, segs, info: `web page, ${how} ${new Date().toISOString().slice(0, 10)}` };
+}
+function textSource(title, text) {
+  const firstLine = text.split("\n").find(l => l.trim()) || "text";
+  const name = clip(title || `Note: ${firstLine.trim()}`, 100);
+  const segs = /^#{1,4}\s/m.test(text) ? mdSegments(text) : linesToSegments(text, 40);
+  return { name, note: true, size: enc.encode(text).length, segs, info: `typed or pasted text, ${new Date().toISOString().slice(0, 10)}` };
 }
 function enqueueLink(raw) {
   const url = normalizeUrl(raw);
@@ -1961,19 +1971,27 @@ window.addEventListener("hashchange", () => go(location.hash.slice(1)));
   document.addEventListener("drop", (e) => { e.preventDefault(); if (e.dataTransfer && e.dataTransfer.files.length && !drop.contains(e.target)) { go("learn"); enqueueFiles(e.dataTransfer.files); } });
   $("#file-in").onchange = (e) => { enqueueFiles(e.target.files); e.target.value = ""; };
   $("#link-form").addEventListener("submit", (e) => { e.preventDefault(); if (enqueueLink($("#link-in").value)) $("#link-in").value = ""; });
-  $("#paste-learn").onclick = () => {
-    const url = normalizeUrl($("#paste-url").value), text = $("#paste-text").value.trim();
-    if (!url) return toast("Add the page's link so BRAIN can cite it.");
-    if (text.length < 40) return toast("Paste the page text first.");
-    enqueueFiles([webSource(url, text, null, "pasted")]);
-    $("#paste-url").value = ""; $("#paste-text").value = "";
+  const textCount = () => { const n = $("#text-body").value.trim().length; $("#text-count").textContent = `${n.toLocaleString()} character${n === 1 ? "" : "s"}` + (n > MAX_TEXT_CHARS ? ` (only the first ${MAX_TEXT_CHARS.toLocaleString()} are kept)` : ""); };
+  $("#text-body").addEventListener("input", textCount);
+  $("#text-learn").onclick = () => {
+    const text = $("#text-body").value.trim(), title = $("#text-title").value.trim(), rawUrl = $("#text-url").value.trim();
+    if (text.length < 20) return toast("Write or paste at least a sentence of text first.");
+    const url = rawUrl ? normalizeUrl(rawUrl) : null;
+    if (rawUrl && !url) return toast("The source link isn't a web address. Fix it or leave it empty.");
+    enqueueFiles([url ? webSource(url, text, title || null, "pasted") : textSource(title, text)]);
+    $("#text-body").value = ""; $("#text-title").value = ""; $("#text-url").value = ""; textCount();
   };
-  // Pasting a link anywhere outside a text field learns from it.
+  // Pasting outside a text field: a link is learned straight away; longer text is put in the text box to review.
   document.addEventListener("paste", (e) => {
     const t = e.target; if (t && (t.closest("input, textarea, [contenteditable]"))) return;
     const s = (e.clipboardData && e.clipboardData.getData("text/plain") || "").trim();
-    const m = URL_ONLY.exec(s); if (!m) return;
-    e.preventDefault(); go("learn"); enqueueLink(m[1]);
+    const m = URL_ONLY.exec(s);
+    if (m) { e.preventDefault(); go("learn"); enqueueLink(m[1]); return; }
+    if (s.length >= 20) {
+      e.preventDefault(); go("learn"); $("#text-body").value = s; textCount();
+      $("#text-card").scrollIntoView({ behavior: "smooth", block: "center" }); $("#text-title").focus();
+      toast("Pasted text is ready. Add a title if you like, then press Learn this text.");
+    }
   });
   $("#doc-search").oninput = (e) => { docFilter.q = e.target.value.toLowerCase().trim(); renderDocs(); };
   $("#mem-search").oninput = (e) => { memState.q = e.target.value; renderMemory(); };
@@ -2111,14 +2129,13 @@ function renderCaps() {
     wc.className = "cap " + (S.web ? "ok" : "no"); wc.textContent = S.web ? "browser ready" : "desktop app only";
     $("#web-hint").textContent = S.web
       ? "BRAIN opens the page in Claude's built-in browser, reads its text and learns it like a document. You can also paste a link anywhere on this page or in Ask Brain."
-      : "Opening links uses Claude's built-in browser, which is only available when this artifact is open in the Claude desktop app. Here, use “Paste page text instead”.";
-    $("#paste-box").open = !S.web;
+      : "Opening links uses Claude's built-in browser, which is only available when this artifact is open in the Claude desktop app. Here, copy the page text into “Learn from text” below and add the link as its source.";
   }
   $("#caps").replaceChildren(...caps.map(([k, ok]) => h("span", { class: "cap " + (ok ? "ok" : "no"), title: ok ? "available" : "unavailable in this view", text: k })));
   $("#lib-status").textContent = (!L.pdf || !L.docx || !L.xlsx) ? `Unavailable here: ${[!L.pdf && "PDF", !L.docx && "DOCX", !L.xlsx && "Excel"].filter(Boolean).join(", ")} (reader library failed to load). Other formats still work.` : "Up to 40 MB per file.";
   const lim = $("#limits"); lim.replaceChildren(...[
     "BRAIN does not retrain Claude. It stores what it extracts and retrieves the relevant pieces for each answer.",
-    "Links are opened by Claude's built-in browser, which only exists in the Claude desktop app. In a web browser or on a phone, paste the page text instead. Pages behind a sign-in work only if you're signed in to that site in the built-in browser. YouTube links give the page text, not the video transcript.",
+    "Links are opened by Claude's built-in browser, which only exists in the Claude desktop app. In a web browser or on a phone, copy the page text into “Learn from text” with its link. Pages behind a sign-in work only if you're signed in to that site in the built-in browser. YouTube links give the page text, not the video transcript.",
     "Scanned PDFs and images have no selectable text; OCR isn't available, so they're reported as unreadable.",
     "Legacy .doc files aren't supported; save them as .docx first. Password-protected files can't be read.",
     "Very large documents: the first 30 chunks (about 270,000 characters) are analysed by AI; all stored text up to 1.2 million characters stays searchable.",
