@@ -115,7 +115,12 @@ textarea.input{resize:vertical;min-height:70px}
 .graph-hud > *{pointer-events:auto}
 .graph-hud .label{color:var(--muted)}
 .graph-tools{display:flex;gap:6px}
-.graph-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:24px;color:var(--muted)}
+.graph-empty{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:8px;text-align:center;padding:60px 24px 26px;color:var(--muted);background:linear-gradient(transparent,color-mix(in srgb,var(--bg) 88%,transparent) 45%)}
+.brain-legend{position:absolute;right:14px;bottom:12px;max-width:min(46%,360px);display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted);pointer-events:none;text-align:left}
+.brain-legend div{display:flex;align-items:baseline;gap:6px;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-shadow:0 0 6px var(--bg)}
+.brain-legend i{width:8px;height:8px;border-radius:50%;flex:none;display:inline-block;box-shadow:0 0 6px currentColor}
+.brain-legend b{color:var(--fg);font-weight:500}
+.proc-ticker{max-width:50%}
 .graph-empty h3{color:var(--fg);font-size:18px}
 .graph-empty p{max-width:40ch;margin:0}
 .proc-ticker{position:absolute;left:14px;bottom:12px;right:14px;font-family:var(--f-mono);font-size:11.5px;color:var(--synapse);text-shadow:0 0 8px #000;pointer-events:none}
@@ -344,6 +349,7 @@ pre.code{background:var(--bg);border:1px solid var(--line);border-radius:8px;pad
             <button class="btn primary" data-goto="learn">Upload a document</button>
           </div>
           <div class="proc-ticker" id="proc-ticker"></div>
+          <div class="brain-legend" id="brain-legend" aria-label="Brain regions"></div>
           <div class="inspector" id="inspector" hidden></div>
         </div>
         <div class="stats">
@@ -1318,117 +1324,256 @@ function buildGraph() {
 
 /* ------------------------------ Graph visualisation ------------------------------ */
 const cv = $("#graph"), ctx = cv.getContext("2d");
-const SIM = { nodes: new Map(), cam: { x: 0, y: 0, z: 1 }, w: 0, h: 0, pulses: [], flashes: new Map(), processing: null, hover: null, selected: null, t: 0, energy: 1 };
-const DOC_COLORS = ["#9a6bff", "#4c8dff", "#62d6ff", "#c084fc", "#7aa2ff", "#a78bfa", "#38bdf8", "#818cf8"];
-function docColor(docId) { const ids = [...S.docs.keys()]; const i = ids.indexOf(docId); return i < 0 ? "#b9a8ff" : DOC_COLORS[i % DOC_COLORS.length]; }
+const SIM = { nodes: new Map(), cam: { x: 0, y: 0, z: 1 }, w: 0, h: 0, R: 200, cy: 0, pulses: [], impulses: [], rings: [], flashes: new Map(), processing: null, hover: null, selected: null, t: 0, energy: 1 };
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ---- Brain anatomy (side view, front to the left), in normalised units: x −1…1, y up is negative.
+   The outline, folds, tissue specks and travelling impulses are decoration; only the bright nodes are concepts. ---- */
+const LOBES = [
+  { id: "frontal", label: "Frontal lobe", x: -0.52, y: -0.24, color: "#9a6bff" },
+  { id: "parietal", label: "Parietal lobe", x: 0.22, y: -0.47, color: "#4c8dff" },
+  { id: "temporal", label: "Temporal lobe", x: -0.1, y: 0.24, color: "#c084fc" },
+  { id: "occipital", label: "Occipital lobe", x: 0.68, y: -0.12, color: "#38bdf8" },
+];
+const HUB = { id: "hub", label: "Association cortex", x: -0.04, y: -0.18, color: "#62d6ff" };     // concepts found in several documents
+const CEREBELLUM = { id: "cerebellum", label: "Cerebellum", x: 0.6, y: 0.43, color: "#5fe3b5" }; // concepts you taught directly
+const CEREBRUM_PTS = [[-0.84, 0.16], [-0.97, -0.12], [-0.87, -0.43], [-0.61, -0.67], [-0.22, -0.81], [0.2, -0.8], [0.57, -0.65], [0.85, -0.39], [0.98, -0.08], [0.91, 0.16], [0.68, 0.25], [0.4, 0.3], [0.14, 0.42], [-0.2, 0.47], [-0.5, 0.41], [-0.71, 0.3]];
+const CEREBELLUM_PTS = [[0.33, 0.34], [0.55, 0.27], [0.8, 0.29], [0.91, 0.41], [0.83, 0.56], [0.6, 0.62], [0.4, 0.53]];
+const STEM_PTS = [[0.2, 0.39], [0.37, 0.37], [0.41, 0.6], [0.39, 0.93], [0.26, 0.93], [0.24, 0.62]];
+function spline(pts, closed, per = 14) {
+  const out = [], n = pts.length, P = (i) => pts[closed ? (i + n) % n : Math.max(0, Math.min(n - 1, i))];
+  for (let i = 0; i < (closed ? n : n - 1); i++) {
+    const [p0, p1, p2, p3] = [P(i - 1), P(i), P(i + 1), P(i + 2)];
+    for (let s = 0; s < per; s++) {
+      const t = s / per, t2 = t * t, t3 = t2 * t;
+      out.push([0, 1].map(k => 0.5 * ((2 * p1[k]) + (-p0[k] + p2[k]) * t + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t2 + (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * t3)));
+    }
+  }
+  if (!closed) out.push(pts[n - 1]);
+  return out;
+}
+function pathOf(samples, closed) { const p = new Path2D(); samples.forEach(([x, y], i) => i ? p.lineTo(x * 1000, y * 1000) : p.moveTo(x * 1000, y * 1000)); if (closed) p.closePath(); return p; }
+const ANAT = (() => {
+  let seed = 7; const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const cerebrum = pathOf(spline(CEREBRUM_PTS, true), true), cerebellum = pathOf(spline(CEREBELLUM_PTS, true), true), stem = pathOf(spline(STEM_PTS, true), true);
+  const hit = document.createElement("canvas").getContext("2d");
+  const inCerebrum = (x, y) => hit.isPointInPath(cerebrum, x * 1000, y * 1000);
+  const inCerebellum = (x, y) => hit.isPointInPath(cerebellum, x * 1000, y * 1000);
+  // folds (sulci): two landmark fissures plus seeded wandering gyri
+  const folds = [
+    [[0.06, -0.8], [0.0, -0.52], [0.07, -0.27], [-0.03, -0.02], [0.02, 0.16]],     // central sulcus
+    [[-0.64, 0.22], [-0.32, 0.12], [-0.02, 0.06], [0.3, -0.03], [0.52, -0.01]],   // lateral (Sylvian) fissure
+    [[0.62, -0.6], [0.66, -0.36], [0.6, -0.1], [0.7, 0.12]],                         // parieto-occipital
+  ];
+  // gyri: short, curling arcs that keep turning one way, like the folds of a cortex
+  let tries = 0;
+  while (folds.length < 58 && tries++ < 3000) {
+    let x = rnd() * 1.9 - 0.95, y = rnd() * 1.3 - 0.8; if (!inCerebrum(x, y)) continue;
+    let a = rnd() * Math.PI * 2; const turn = (rnd() < .5 ? -1 : 1) * (0.45 + rnd() * 0.5); const len = 0.05 + rnd() * 0.035;
+    const pts = [[x, y]]; let ok = true; const steps = 4 + Math.floor(rnd() * 3);
+    for (let i = 0; i < steps; i++) { a += turn; x += Math.cos(a) * len; y += Math.sin(a) * len; if (!inCerebrum(x, y)) { ok = false; break; } pts.push([x, y]); }
+    if (ok && pts.length > 3) folds.push(pts);
+  }
+  const foldSamples = folds.map(f => spline(f, false, 8));
+  const foldPaths = foldSamples.map(s => pathOf(s, false));
+  const folia = [0.33, 0.4, 0.47, 0.54].map(y => { const xs = []; for (let x = 0.4; x <= 0.86; x += 0.03) xs.push([x, y + Math.sin(x * 22) * 0.012]); return xs; }).map(s => pathOf(s.filter(([x, y]) => inCerebellum(x, y)), false));
+  const specks = []; tries = 0;
+  while (specks.length < 240 && tries++ < 4000) { const x = rnd() * 2 - 1, y = rnd() * 1.5 - 0.8; if (inCerebrum(x, y) || inCerebellum(x, y)) specks.push({ x, y, ph: rnd() * 6.28, r: .5 + rnd() * .9 }); }
+  return { cerebrum, cerebellum, stem, foldSamples, foldPaths, folia, specks, inCerebrum, inCerebellum };
+})();
+const insideBrain = (x, y) => ANAT.inCerebrum(x, y) || ANAT.inCerebellum(x, y);
+
+function regionFor(n) {
+  if (!n.docs.size) return CEREBELLUM;
+  if (n.docs.size > 1) return HUB;
+  const order = [...S.docs.values()].sort((a, b) => (a.learnedAt || a.uploadedAt || "").localeCompare(b.learnedAt || b.uploadedAt || "")).map(d => d.id);
+  const i = order.indexOf([...n.docs][0]);
+  return LOBES[(i < 0 ? 0 : i) % LOBES.length];
+}
 function syncSim() {
   const keep = new Set();
-  const Rx = 260, Ry = 190;
   for (const n of GRAPH.nodes) {
     keep.add(n.key);
+    const reg = regionFor(n);
     let s = SIM.nodes.get(n.key);
-    if (!s) { const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()); s = { x: Math.cos(a) * Rx * r * .7, y: Math.sin(a) * Ry * r * .7, vx: 0, vy: 0 }; SIM.nodes.set(n.key, s); }
-    s.n = n; s.r = 3.5 + Math.min(9, Math.sqrt(n.count) * 2.2 + n.docs.size);
-    s.color = n.docs.size > 1 ? "#62d6ff" : docColor([...n.docs][0]);
+    if (!s) { s = { x: reg.x + (Math.random() - .5) * .22, y: reg.y + (Math.random() - .5) * .18, vx: 0, vy: 0 }; SIM.nodes.set(n.key, s); }
+    s.n = n; s.reg = reg; s.r = 3.2 + Math.min(8, Math.sqrt(n.count) * 2 + n.docs.size);
+    s.color = reg.color;
   }
   for (const k of [...SIM.nodes.keys()]) if (!keep.has(k)) SIM.nodes.delete(k);
   SIM.energy = 1;
   $("#graph-empty").hidden = GRAPH.nodes.length > 0;
-  $("#graph-caption").textContent = GRAPH.nodes.length ? `${GRAPH.nodes.length} concepts · ${GRAPH.edges.length} relationships. Click a node to explore it. Cyan nodes appear in more than one document.` : "Nodes are concepts, lines are relationships.";
+  $("#graph-caption").textContent = GRAPH.nodes.length ? `${GRAPH.nodes.length} concepts · ${GRAPH.edges.length} relationships. Click a neuron to explore it; drag to move, scroll to zoom.` : "Neurons are concepts, connections are relationships.";
+  // legend: which document lives in which region
+  const leg = $("#brain-legend"); leg.replaceChildren();
+  if (GRAPH.nodes.length) {
+    const used = new Map();
+    for (const s of SIM.nodes.values()) { const r = s.reg; if (!used.has(r.id)) used.set(r.id, { r, docs: new Set() }); if (r !== HUB && r !== CEREBELLUM) s.n.docs.forEach(d => used.get(r.id).docs.add(d)); }
+    for (const { r, docs } of used.values()) {
+      const names = [...docs].map(id => S.docs.get(id)?.name).filter(Boolean);
+      const what = r === HUB ? "shared by several documents" : r === CEREBELLUM ? "taught by you" : clip(names.join(", "), 60);
+      leg.append(h("div", {}, h("i", { style: `background:${r.color}` }), h("b", { text: r.label.replace(" lobe", "") }), " ", what));
+    }
+  }
 }
 function resize() {
   const r = cv.getBoundingClientRect(); const dpr = Math.min(2, window.devicePixelRatio || 1);
   SIM.w = r.width; SIM.h = r.height; cv.width = Math.max(1, r.width * dpr); cv.height = Math.max(1, r.height * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  SIM.dpr = dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 new ResizeObserver(resize).observe(cv);
 function step() {
   const nodes = [...SIM.nodes.values()]; if (!nodes.length) return;
-  const Rx = Math.max(160, SIM.w * .42), Ry = Math.max(130, SIM.h * .40);
-  const k = SIM.energy;
-  if (k < 0.02 && !SIM.drag) return;
+  const k = Math.max(SIM.energy, SIM.processing ? .25 : .05);
   for (let i = 0; i < nodes.length; i++) {
     const a = nodes[i];
     for (let j = i + 1; j < nodes.length; j++) {
-      const b = nodes[j]; let dx = a.x - b.x, dy = a.y - b.y; let d2 = dx * dx + dy * dy + .01;
-      if (d2 > 40000) continue;
-      const f = 900 / d2; const d = Math.sqrt(d2); dx /= d; dy /= d;
-      a.vx += dx * f * k; a.vy += dy * f * k; b.vx -= dx * f * k; b.vy -= dy * f * k;
+      const b = nodes[j]; let dx = a.x - b.x, dy = a.y - b.y; const d2 = dx * dx + dy * dy + 1e-5;
+      if (d2 > 0.05) continue;
+      const f = Math.min(0.004, 0.00009 / d2) * k; const d = Math.sqrt(d2); dx /= d; dy /= d;
+      a.vx += dx * f; a.vy += dy * f; b.vx -= dx * f; b.vy -= dy * f;
     }
   }
   for (const e of GRAPH.edges) {
     const a = SIM.nodes.get(e.a), b = SIM.nodes.get(e.b); if (!a || !b) continue;
-    const dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy) + .01; const f = (d - 70) * .012 * k;
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy) + 1e-4; const f = (d - 0.17) * 0.02 * k;
     a.vx += dx / d * f; a.vy += dy / d * f; b.vx -= dx / d * f; b.vy -= dy / d * f;
   }
   for (const s of nodes) {
-    // brain-shaped boundary: two hemispheres
-    const side = s.x < 0 ? -1 : 1; const cx = side * Rx * .27; const ex = (s.x - cx) / (Rx * .62), ey = (s.y) / Ry;
-    const e2 = ex * ex + ey * ey; if (e2 > 1) { s.vx -= (s.x - cx) * .02 * (e2 - 1); s.vy -= s.y * .02 * (e2 - 1); }
-    s.vx -= s.x * .0009; s.vy -= s.y * .0009;
+    s.vx += (s.reg.x - s.x) * 0.004 * k; s.vy += (s.reg.y - s.y) * 0.004 * k;
+    if (!insideBrain(s.x, s.y)) { s.vx += (s.reg.x - s.x) * 0.05; s.vy += (s.reg.y - s.y) * 0.05; }
+    if (!reduced) { s.vx += (Math.random() - .5) * 0.00012; s.vy += (Math.random() - .5) * 0.00012; } // living drift
     if (s === SIM.drag) { s.vx = s.vy = 0; continue; }
-    s.vx *= .82; s.vy *= .82; s.x += s.vx; s.y += s.vy;
+    s.vx *= .86; s.vy *= .86;
+    const v = Math.hypot(s.vx, s.vy); if (v > 0.02) { s.vx *= 0.02 / v; s.vy *= 0.02 / v; }
+    s.x += s.vx; s.y += s.vy;
   }
-  SIM.energy *= .994;
+  SIM.energy *= .995;
 }
-function toScreen(x, y) { return [SIM.w / 2 + (x + SIM.cam.x) * SIM.cam.z, SIM.h / 2 + (y + SIM.cam.y) * SIM.cam.z]; }
-function toWorld(px, py) { return [(px - SIM.w / 2) / SIM.cam.z - SIM.cam.x, (py - SIM.h / 2) / SIM.cam.z - SIM.cam.y]; }
-const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+function toScreen(x, y) { const z = SIM.R * SIM.cam.z; return [SIM.w / 2 + (x + SIM.cam.x) * z, SIM.cy + (y + SIM.cam.y) * z]; }
+function toWorld(px, py) { const z = SIM.R * SIM.cam.z; return [(px - SIM.w / 2) / z - SIM.cam.x, (py - SIM.cy) / z - SIM.cam.y]; }
+function edgeCtrl(a, b, key) {
+  // gently curved axons: bend each connection to one side, stable per edge
+  let hsh = 0; for (let i = 0; i < key.length; i++) hsh = (hsh * 31 + key.charCodeAt(i)) | 0;
+  const side = hsh & 1 ? 1 : -1, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, dx = b.x - a.x, dy = b.y - a.y;
+  return [mx - dy * 0.18 * side, my + dx * 0.18 * side];
+}
+const qb = (a, c, b, t) => (1 - t) * (1 - t) * a + 2 * (1 - t) * t * c + t * t * b;
 function draw() {
   SIM.t += 1;
   if (GRAPH_DIRTY) buildGraph();
   step();
-  const W = SIM.w, H = SIM.h; ctx.clearRect(0, 0, W, H);
-  // hemisphere outlines (decoration, not data)
-  const Rx = Math.max(160, W * .42), Ry = Math.max(130, H * .40);
-  ctx.save(); ctx.lineWidth = 1;
-  for (const side of [-1, 1]) {
-    const [cx, cy] = toScreen(side * Rx * .27, 0);
-    ctx.beginPath(); ctx.ellipse(cx, cy, Rx * .62 * SIM.cam.z, Ry * SIM.cam.z, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = SIM.processing ? `rgba(98,214,255,${.12 + .08 * Math.sin(SIM.t / 12)})` : "rgba(154,107,255,.10)"; ctx.setLineDash([2, 7]); ctx.stroke();
-  }
+  const W = SIM.w, H = SIM.h, t = SIM.t, busy = !!SIM.processing;
+  SIM.R = Math.max(60, Math.min(W / 2.3, (H - 60) / 1.95)); SIM.cy = 30 + (H - 30) / 2 - SIM.R * SIM.cam.z * 0.06;
+  ctx.clearRect(0, 0, W, H);
+  const z = SIM.R * SIM.cam.z, [ox, oy] = toScreen(0, 0);
+  const breathe = reduced ? 0.5 : 0.5 + 0.5 * Math.sin(t / (busy ? 14 : 55));
+  // ---- the brain ----
+  ctx.save(); ctx.translate(ox, oy); ctx.scale(z / 1000, z / 1000);
+  const px = 1000 / z; // one screen pixel in path units
+  // back to front: brainstem, cerebellum, cerebrum; each opaque so the one in front hides the overlap
+  const edge = busy ? `rgba(98,214,255,${.5 + .3 * breathe})` : `rgba(170,145,255,${.42 + .14 * breathe})`;
+  const glowCol = busy ? "rgba(98,214,255,.9)" : "rgba(154,107,255,.8)";
+  const part = (path, fill, lw) => {
+    ctx.shadowBlur = 0; ctx.fillStyle = "#0b0921"; ctx.fill(path);
+    if (fill) { ctx.fillStyle = fill; ctx.fill(path); }
+    ctx.shadowBlur = 14; ctx.shadowColor = glowCol; ctx.lineWidth = lw * px; ctx.strokeStyle = edge; ctx.stroke(path); ctx.shadowBlur = 0;
+  };
+  part(ANAT.stem, "rgba(120,100,230,.08)", 1.3);
+  part(ANAT.cerebellum, `rgba(95,227,181,${.04 + .03 * breathe})`, 1.6);
+  ctx.lineCap = "round"; ctx.lineWidth = 1.2 * px; ctx.strokeStyle = `rgba(160,140,255,${.2 + .06 * breathe})`; ANAT.folia.forEach(p => ctx.stroke(p));
+  const g = ctx.createRadialGradient(-100, -150, 50, 0, 0, 1050);
+  g.addColorStop(0, busy ? `rgba(98,214,255,${.16 + .08 * breathe})` : `rgba(154,107,255,${.14 + .05 * breathe})`);
+  g.addColorStop(.7, "rgba(76,141,255,.05)"); g.addColorStop(1, "rgba(76,141,255,0)");
+  part(ANAT.cerebrum, g, 1.9);
+  // folds (gyri and fissures), clipped to the cerebrum
+  ctx.save(); ctx.clip(ANAT.cerebrum);
+  ctx.lineWidth = 1.5 * px; ctx.strokeStyle = `rgba(165,140,255,${.2 + .07 * breathe})`;
+  ANAT.foldPaths.forEach((p, i) => { ctx.lineWidth = (i < 3 ? 2.2 : 1.4) * px; ctx.stroke(p); });
   ctx.restore();
-  const sel = SIM.selected, hov = SIM.hover;
-  const nbr = new Set();
+  ctx.restore();
+  // tissue specks (twinkling)
+  for (const s of ANAT.specks) {
+    const [x, y] = toScreen(s.x, s.y); const a = reduced ? .18 : .1 + .22 * (0.5 + 0.5 * Math.sin(t / 38 + s.ph));
+    ctx.fillStyle = `rgba(190,175,255,${a})`; ctx.fillRect(x - s.r / 2, y - s.r / 2, s.r, s.r);
+  }
+  // impulses travelling along the folds
+  if (!reduced && t % (busy ? 3 : 22) === 0 && SIM.impulses.length < 50) SIM.impulses.push({ f: ANAT.foldSamples[Math.floor(Math.random() * ANAT.foldSamples.length)], p: 0, sp: .012 + Math.random() * .012, rev: Math.random() < .5 });
+  SIM.impulses = SIM.impulses.filter(im => (im.p += im.sp) < 1);
+  for (const im of SIM.impulses) {
+    const f = im.f, n = f.length - 1;
+    for (let tail = 0; tail < 4; tail++) {
+      const pp = Math.max(0, im.p - tail * .025), q = im.rev ? 1 - pp : pp, i = Math.min(n - 1, Math.floor(q * n)), fr = q * n - i;
+      const [x, y] = toScreen(f[i][0] + (f[i + 1][0] - f[i][0]) * fr, f[i][1] + (f[i + 1][1] - f[i][1]) * fr);
+      ctx.fillStyle = `rgba(150,225,255,${(busy ? .8 : .5) * (1 - tail / 4) * Math.sin(Math.PI * im.p)})`;
+      ctx.beginPath(); ctx.arc(x, y, 1.8 - tail * .3, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  // region labels
+  ctx.font = "600 9.5px 'IBM Plex Mono', ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (const r of [...LOBES, CEREBELLUM]) { const [x, y] = toScreen(r.x, r.y + (r === CEREBELLUM ? .13 : r.id === "temporal" ? .14 : -.13)); ctx.fillStyle = "rgba(200,190,255,.22)"; ctx.fillText(r.label.toUpperCase(), x, y); }
+  ctx.textAlign = "left";
+  // ---- connections (axons) ----
+  const sel = SIM.selected, hov = SIM.hover; const nbr = new Set();
   if (sel) for (const e of GRAPH.edges) { if (e.a === sel) nbr.add(e.b); if (e.b === sel) nbr.add(e.a); }
-  // edges
   for (const e of GRAPH.edges) {
     const a = SIM.nodes.get(e.a), b = SIM.nodes.get(e.b); if (!a || !b) continue;
-    const [x1, y1] = toScreen(a.x, a.y), [x2, y2] = toScreen(b.x, b.y);
+    const [cx, cy] = edgeCtrl(a, b, e.a + e.b);
+    const [x1, y1] = toScreen(a.x, a.y), [x2, y2] = toScreen(b.x, b.y), [qx, qy] = toScreen(cx, cy);
     const hi = sel && (e.a === sel || e.b === sel);
-    ctx.strokeStyle = hi ? "rgba(98,214,255,.75)" : sel ? "rgba(120,110,200,.08)" : "rgba(130,120,230,.22)";
-    ctx.lineWidth = hi ? 1.6 : 1;
-    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.strokeStyle = hi ? "rgba(98,214,255,.8)" : sel ? "rgba(120,110,200,.07)" : "rgba(140,130,240,.26)";
+    ctx.lineWidth = hi ? 1.7 : 1;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(qx, qy, x2, y2); ctx.stroke();
   }
-  // processing pulses along edges
-  if (SIM.processing && GRAPH.edges.length && !reduced && SIM.t % 6 === 0 && SIM.pulses.length < 40) {
-    const e = GRAPH.edges[Math.floor(Math.random() * GRAPH.edges.length)]; SIM.pulses.push({ e, p: 0, dir: Math.random() < .5 });
+  // synaptic signals between connected concepts
+  if (GRAPH.edges.length && !reduced && t % (busy ? 3 : 30) === 0 && SIM.pulses.length < 60) {
+    const pool = sel ? GRAPH.edges.filter(e => e.a === sel || e.b === sel) : GRAPH.edges;
+    const e = pool[Math.floor(Math.random() * pool.length)]; if (e) SIM.pulses.push({ e, p: 0, dir: Math.random() < .5, sp: busy ? .035 : .018 });
   }
-  SIM.pulses = SIM.pulses.filter(p => (p.p += .03) < 1);
+  SIM.pulses = SIM.pulses.filter(p => {
+    p.p += p.sp;
+    if (p.p >= 1) { const to = p.dir ? p.e.b : p.e.a; SIM.flashes.set(to, Math.max(SIM.flashes.get(to) || 0, .45)); return false; }
+    return true;
+  });
   for (const p of SIM.pulses) {
     const a = SIM.nodes.get(p.dir ? p.e.a : p.e.b), b = SIM.nodes.get(p.dir ? p.e.b : p.e.a); if (!a || !b) continue;
-    const [x, y] = toScreen(a.x + (b.x - a.x) * p.p, a.y + (b.y - a.y) * p.p);
-    const g = ctx.createRadialGradient(x, y, 0, x, y, 7); g.addColorStop(0, "rgba(98,214,255,.95)"); g.addColorStop(1, "rgba(98,214,255,0)");
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill();
+    const [cx, cy] = edgeCtrl(SIM.nodes.get(p.e.a), SIM.nodes.get(p.e.b), p.e.a + p.e.b);
+    for (let tail = 0; tail < 5; tail++) {
+      const tt = Math.max(0, p.p - tail * .03);
+      const [x, y] = toScreen(qb(a.x, cx, b.x, tt), qb(a.y, cy, b.y, tt));
+      const rad = tail ? 2.4 - tail * .35 : 6;
+      if (!tail) { const gg = ctx.createRadialGradient(x, y, 0, x, y, rad); gg.addColorStop(0, "rgba(160,235,255,.95)"); gg.addColorStop(1, "rgba(98,214,255,0)"); ctx.fillStyle = gg; }
+      else ctx.fillStyle = `rgba(98,214,255,${.55 - tail * .1})`;
+      ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fill();
+    }
   }
-  // nodes
-  const showLabels = SIM.nodes.size < 70 || SIM.cam.z > 1.3;
+  // ---- neurons (concepts) ----
+  const showLabels = SIM.nodes.size < 45 || SIM.cam.z > 1.4;
   ctx.font = "11px 'IBM Plex Sans', system-ui, sans-serif"; ctx.textBaseline = "middle";
   for (const [k, s] of SIM.nodes) {
     const [x, y] = toScreen(s.x, s.y); if (x < -40 || y < -40 || x > W + 40 || y > H + 40) continue;
     const dim = sel && k !== sel && !nbr.has(k);
     const flash = SIM.flashes.get(k) || 0;
-    const r = s.r * Math.max(.7, Math.min(1.6, SIM.cam.z)) * (1 + flash * .6) * (SIM.processing && !reduced ? 1 + .08 * Math.sin(SIM.t / 8 + s.x) : 1);
-    const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 3);
-    glow.addColorStop(0, hexA(s.color, dim ? .12 : .45 + flash * .5)); glow.addColorStop(1, hexA(s.color, 0));
-    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y, r * 3, 0, Math.PI * 2); ctx.fill();
+    const beat = reduced ? 1 : 1 + (busy ? .1 : .04) * Math.sin(t / (busy ? 7 : 24) + s.x * 9);
+    const r = s.r * Math.max(.75, Math.min(1.6, SIM.cam.z)) * (1 + flash * .7) * beat;
+    const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 3.4);
+    glow.addColorStop(0, hexA(s.color, dim ? .1 : .42 + flash * .55)); glow.addColorStop(1, hexA(s.color, 0));
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y, r * 3.4, 0, Math.PI * 2); ctx.fill();
+    // dendrite stubs
+    if (!dim && r > 4) { ctx.strokeStyle = hexA(s.color, .35); ctx.lineWidth = 1; for (let d = 0; d < 3; d++) { const a = d * 2.1 + s.x * 5; ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r); ctx.lineTo(x + Math.cos(a + .3) * r * 2, y + Math.sin(a + .3) * r * 2); ctx.stroke(); } }
     ctx.fillStyle = dim ? hexA(s.color, .3) : s.color; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = `rgba(255,255,255,${dim ? .15 : .55 + flash * .4})`; ctx.beginPath(); ctx.arc(x - r * .3, y - r * .3, r * .35, 0, Math.PI * 2); ctx.fill();
     if (k === sel || k === hov) { ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r + 3, 0, Math.PI * 2); ctx.stroke(); }
-    if ((showLabels && !dim) || k === sel || k === hov || nbr.has(k) || s.r > 9) {
-      ctx.fillStyle = dim ? "rgba(233,230,255,.3)" : "rgba(233,230,255,.88)"; ctx.fillText(clip(s.n.name, 28), x + r + 4, y);
+    if ((showLabels && !dim) || k === sel || k === hov || nbr.has(k) || s.r > 8.5) {
+      ctx.fillStyle = "rgba(7,6,26,.65)"; const label = clip(s.n.name, 28); const tw = ctx.measureText(label).width;
+      ctx.fillRect(x + r + 3, y - 7, tw + 6, 14);
+      ctx.fillStyle = dim ? "rgba(233,230,255,.3)" : "rgba(233,230,255,.92)"; ctx.fillText(label, x + r + 6, y);
     }
-    if (flash) SIM.flashes.set(k, Math.max(0, flash - .01)); if (flash && flash <= .01) SIM.flashes.delete(k);
+    if (flash) { const nf = flash - .012; nf > 0 ? SIM.flashes.set(k, nf) : SIM.flashes.delete(k); }
   }
+  // birth rings for newly learned concepts
+  SIM.rings = SIM.rings.filter(rg => (rg.p += .015) < 1);
+  for (const rg of SIM.rings) { const s = SIM.nodes.get(rg.k); if (!s) continue; const [x, y] = toScreen(s.x, s.y); ctx.strokeStyle = hexA(s.color, .8 * (1 - rg.p)); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 6 + rg.p * 40, 0, Math.PI * 2); ctx.stroke(); }
   requestAnimationFrame(draw);
 }
 function hexA(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
@@ -1438,7 +1583,7 @@ function pickNode(px, py) {
   return best;
 }
 function pulseGraph(msg) { SIM.processing = msg; $("#proc-ticker").textContent = msg ? "● " + msg : ""; SIM.energy = Math.max(SIM.energy, .3); }
-function flashConcepts(keys) { for (const k of keys) SIM.flashes.set(k, 1); SIM.energy = 1; }
+function flashConcepts(keys) { for (const k of keys) { SIM.flashes.set(k, 1); SIM.rings.push({ k, p: 0 }); } SIM.energy = 1; }
 (() => {
   let down = null, moved = false;
   cv.addEventListener("pointerdown", (e) => {
@@ -1451,7 +1596,7 @@ function flashConcepts(keys) { for (const k of keys) SIM.flashes.set(k, 1); SIM.
     if (!down) { const k = pickNode(px, py); SIM.hover = k; cv.style.cursor = k ? "pointer" : "grab"; return; }
     if (Math.hypot(px - down.px, py - down.py) > 4) moved = true;
     if (SIM.drag) { const [wx, wy] = toWorld(px, py); SIM.drag.x = wx; SIM.drag.y = wy; SIM.energy = Math.max(SIM.energy, .2); }
-    else { SIM.cam.x = down.cam.x + (px - down.px) / SIM.cam.z; SIM.cam.y = down.cam.y + (py - down.py) / SIM.cam.z; }
+    else { const zz = SIM.R * SIM.cam.z; SIM.cam.x = down.cam.x + (px - down.px) / zz; SIM.cam.y = down.cam.y + (py - down.py) / zz; }
   });
   const up = () => { if (down && !moved) { if (down.k) selectConcept(down.k); else { SIM.selected = null; $("#inspector").hidden = true; } } down = null; SIM.drag = null; cv.classList.remove("dragging"); };
   cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
@@ -1471,7 +1616,7 @@ function selectConcept(key) {
   const mems = search(n.name, { kinds: ["mem"], limit: 8 }).filter(m => m.hits > 0);
   ins.append(
     h("button", { class: "btn sm ghost x", "aria-label": "Close", onclick: () => { ins.hidden = true; SIM.selected = null; } }, "✕"),
-    h("div", { class: "label", text: "Concept" }),
+    h("div", { class: "label", text: "Concept · " + ((SIM.nodes.get(key) || {}).reg || { label: "" }).label }),
     h("h3", { text: n.name }),
     n.descs.length ? h("p", { style: "margin:0;font-size:13px;color:var(--muted)", text: n.descs.slice(0, 2).join(" ") }) : null,
     h("div", { class: "label", text: `Source documents (${n.docs.size})` }),
