@@ -201,7 +201,28 @@ textarea.input{resize:vertical;min-height:70px}
 .bubble p{margin:0 0 8px}.bubble p:last-child{margin-bottom:0}
 .bubble ul,.bubble ol{margin:0 0 8px;padding-left:20px}
 .bubble code{font-family:var(--f-mono);font-size:12.5px;background:var(--bg);padding:1px 4px;border-radius:4px}
-.bubble h4{font-family:var(--f-display);margin:6px 0 4px;font-size:14px}
+.bubble h4{font-family:var(--f-display);margin:10px 0 4px;font-size:14.5px}
+.bubble hr{border:0;border-top:1px solid var(--line);margin:10px 0}
+.codeblock{margin:8px 0 10px;border:1px solid var(--line-2);border-radius:9px;overflow:hidden;background:#05040f}
+.code-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 6px 4px 11px;background:var(--panel-2);border-bottom:1px solid var(--line);font-family:var(--f-mono);font-size:11px;color:var(--muted);text-transform:lowercase}
+.code-head .writing{color:var(--synapse);text-transform:none}
+.copy-code{border:1px solid var(--line-2);background:var(--panel);color:var(--fg);border-radius:6px;padding:2px 9px;font-family:var(--f-body);font-size:11.5px}
+.copy-code:hover{border-color:var(--violet)}
+.codeblock pre{margin:0;padding:11px 13px;overflow-x:auto;max-height:560px}
+.codeblock code{font-family:var(--f-mono);font-size:12.5px;line-height:1.55;background:none;padding:0;white-space:pre;color:#dcd8ff}
+.tablewrap{overflow-x:auto;margin:6px 0 10px}
+.bubble table{border-collapse:collapse;font-size:13px;min-width:60%}
+.bubble th,.bubble td{border:1px solid var(--line-2);padding:5px 9px;text-align:left;vertical-align:top}
+.bubble th{background:var(--panel-2);font-weight:600}
+.basis{display:inline-block;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.04em;padding:2px 8px;border-radius:999px;margin-bottom:8px;border:1px solid var(--line-2);color:var(--muted)}
+.basis.learned{color:var(--synapse);border-color:#22576b}
+.basis.general{color:#b59bff;border-color:#4a3a8f}
+.basis.combined{color:var(--ok);border-color:#1d5e47}
+.ai-error{margin-top:8px;border:1px solid color-mix(in srgb,var(--err) 45%,transparent);background:color-mix(in srgb,var(--err) 8%,transparent);border-radius:8px;padding:8px 10px;font-size:13px;color:var(--fg)}
+.ai-error b{color:var(--err)}
+.ai-error .mono{font-size:11px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}
+.acc{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:13px}
+.acc li{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
 .cite{display:inline-block;font-family:var(--f-mono);font-size:10.5px;color:var(--synapse);border:1px solid #22576b;border-radius:4px;padding:0 4px;margin:0 1px;vertical-align:1px;background:none;cursor:pointer}
 .sources{margin-top:10px;border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:4px}
 .sources div{font-size:12px;color:var(--muted)}
@@ -399,7 +420,7 @@ pre.code{background:var(--bg);border:1px solid var(--line);border-radius:8px;pad
               <button data-mode="teach" aria-pressed="false">Teach</button>
               <button data-mode="correct" aria-pressed="false">Correct</button>
             </div>
-            <span class="hint" id="mode-hint">Answers only from what BRAIN has learned, with sources.</span>
+            <span class="hint" id="mode-hint">Answers with your knowledge plus Claude's own reasoning; cites your documents.</span>
             <div class="grow"></div>
             <button class="btn ghost sm" id="clear-chat" title="Clear short-term memory">Clear chat</button>
             <button class="btn" id="stop" hidden>Stop</button>
@@ -470,9 +491,9 @@ pre.code{background:var(--bg);border:1px solid var(--line);border-radius:8px;pad
         </div>
         <div class="card">
           <div class="card-h"><h3>Thinking cost</h3></div>
-          <p>BRAIN uses the lowest-cost Claude tier for reading documents and checking for conflicts. Answers can use the same quick tier or the balanced tier.</p>
+          <p>Reading documents and checking for conflicts use the lowest-cost Claude tier. Answers, explanations and programs use the balanced tier by default, which is much better at reasoning and code; switch to Quick to save usage.</p>
           <div class="field"><span class="label">Answer model</span>
-            <div class="seg" role="group" id="tier"><button data-tier="quick" aria-pressed="true">Quick (lowest cost)</button><button data-tier="default" aria-pressed="false">Balanced (deeper answers)</button></div></div>
+            <div class="seg" role="group" id="tier"><button data-tier="default" aria-pressed="true">Balanced (recommended)</button><button data-tier="quick" aria-pressed="false">Quick (lowest cost)</button></div></div>
           <ul>
             <li>Documents are hashed and never re-read when uploaded again.</li>
             <li>Each document is analysed in chunks of about 9,000 characters, at most 30 chunks; text beyond that is still stored and searchable.</li>
@@ -493,6 +514,12 @@ pre.code{background:var(--bg);border:1px solid var(--line);border-radius:8px;pad
             <span class="label">Erase the whole brain</span>
             <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="input" id="erase-confirm" placeholder="Type ERASE" style="max-width:160px" aria-label="Type ERASE to confirm"><button class="btn danger" id="erase" disabled>Erase permanently</button></div>
           </div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Acceptance tests</h3></div>
+          <p>Runs eight test questions through the real Ask Brain chat, using Claude on your account: Java, Python, Spring Boot, OOP, your documents, and a general question. The answers appear in Ask Brain; results show here.</p>
+          <button class="btn primary" id="acc-run" type="button">Run acceptance tests</button>
+          <ul class="acc" id="acc-results"></ul>
         </div>
         <div class="card">
           <div class="card-h"><h3>Integration with VS AI Co.IN</h3></div>
@@ -568,7 +595,7 @@ const S = {
   log: new Map(),       // bucket (yyyy-mm) -> {items:[]}
   chat: [],             // short-term memory: [{role, content, sources?}]
   busy: 0,
-  tier: "quick",
+  tier: "default",
   view: "brain",
 };
 
@@ -1465,7 +1492,7 @@ function srcLabel(m) {
 /* ------------------------------ Ask BRAIN ------------------------------ */
 let mode = "ask", askCtl = null;
 const MODE_HINT = {
-  ask: "Answers only from what BRAIN has learned, with sources.",
+  ask: "Answers with your knowledge plus Claude's own reasoning; cites your documents.",
   teach: "Tell BRAIN a fact or procedure. It checks for conflicts before saving.",
   correct: "Describe what's wrong. BRAIN proposes changes; you confirm them.",
 };
@@ -1476,24 +1503,57 @@ function saveChat() { try { sessionStorage.setItem("brain-chat", JSON.stringify(
 function loadChat() { try { const v = JSON.parse(sessionStorage.getItem("brain-chat") || "[]"); if (Array.isArray(v)) S.chat = v.filter(m => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string"); } catch (e) {} }
 
 function renderMarkdown(text, sources) {
-  // safe minimal markdown: escape first
+  // Safe Markdown: everything is escaped first; supports fenced code blocks (with copy buttons), tables, lists, headings.
   const esc = (s) => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   const inline = (s) => esc(s)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
-    .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<i>$2</i>")
+    .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:!?]|$)/g, "$1<i>$2</i>")
     .replace(/\[(S\d+(?:\s*,\s*S\d+)*)\]/g, (m, g) => g.split(/\s*,\s*/).map(id => sources && sources.has(id) ? `<button class="cite" data-src="${id}" title="${esc(sources.get(id).label)}">${id}</button>` : "").join(""));
-  const lines = text.split("\n"); let html = "", list = null;
+  const lines = text.split("\n"); let html = "", list = null, i = 0;
   const close = () => { if (list) { html += `</${list}>`; list = null; } };
-  for (const ln of lines) {
-    let m;
+  const cells = (ln) => ln.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(c => c.trim());
+  while (i < lines.length) {
+    const ln = lines[i]; let m;
+    if ((m = /^\s*(```|~~~)\s*([\w+#.-]*)\s*$/.exec(ln))) {
+      close();
+      const fence = m[1], lang = m[2] || "code", body = [];
+      i++;
+      while (i < lines.length && !new RegExp("^\\s*" + fence + "\\s*$").test(lines[i])) body.push(lines[i++]);
+      const done = i < lines.length; i++;
+      html += `<div class="codeblock"><div class="code-head"><span>${esc(lang)}</span>${done ? '<button class="copy-code" type="button">Copy</button>' : '<span class="writing">writing…</span>'}</div><pre><code>${esc(body.join("\n"))}</code></pre></div>`;
+      continue;
+    }
+    if (/^\s*\|.*\|\s*$/.test(ln) && i + 1 < lines.length && /^\s*\|?\s*:?-{3,}/.test(lines[i + 1])) {
+      close();
+      const head = cells(ln); i += 2; const rows = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(cells(lines[i++]));
+      html += `<div class="tablewrap"><table><thead><tr>${head.map(c => `<th>${inline(c)}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${inline(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+      continue;
+    }
     if ((m = /^\s*[-*•]\s+(.*)/.exec(ln))) { if (list !== "ul") { close(); html += "<ul>"; list = "ul"; } html += `<li>${inline(m[1])}</li>`; }
     else if ((m = /^\s*\d+[.)]\s+(.*)/.exec(ln))) { if (list !== "ol") { close(); html += "<ol>"; list = "ol"; } html += `<li>${inline(m[1])}</li>`; }
-    else if ((m = /^#{1,4}\s+(.*)/.exec(ln))) { close(); html += `<h4>${inline(m[1])}</h4>`; }
+    else if ((m = /^#{1,6}\s+(.*)/.exec(ln))) { close(); html += `<h4>${inline(m[1])}</h4>`; }
+    else if (/^\s*(---|\*\*\*)\s*$/.test(ln)) { close(); html += "<hr>"; }
     else if (!ln.trim()) { close(); }
     else { close(); html += `<p>${inline(ln)}</p>`; }
+    i++;
   }
   close(); return html;
+}
+// Copy buttons on code blocks (delegated; works for streamed and restored answers).
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".copy-code"); if (!btn) return;
+  const code = btn.closest(".codeblock").querySelector("code").textContent;
+  try { await navigator.clipboard.writeText(code); btn.textContent = "Copied"; }
+  catch (err) { const r = document.createRange(); r.selectNodeContents(btn.closest(".codeblock").querySelector("code")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); btn.textContent = "Press Ctrl+C"; }
+  setTimeout(() => (btn.textContent = "Copy"), 1800);
+});
+const BASIS_RE = /\n*\s*\**BASIS:\s*(learned|general|combined)\**\s*$/i;
+const BASIS_LABEL = { learned: ["From your knowledge", "learned"], general: ["Claude's general knowledge", "general"], combined: ["Your knowledge + Claude's reasoning", "combined"] };
+function splitBasis(text) {
+  const m = BASIS_RE.exec(text);
+  return m ? { text: text.slice(0, m.index).trimEnd(), basis: m[1].toLowerCase() } : { text: text.replace(/\n+\s*\**BASIS:?[^\n]*$/i, "").trimEnd(), basis: null };
 }
 
 function bubble(role, content) {
@@ -1509,18 +1569,19 @@ function renderThread() {
     const hasDocs = S.docs.size > 0;
     t.append(h("div", { class: "welcome" },
       h("h3", { text: "Ask BRAIN" }),
-      h("p", { text: hasDocs ? `BRAIN has learned ${S.docs.size} document(s). Ask anything about them, compare them, or request a report. Answers cite their sources.` : "BRAIN hasn't learned anything yet. Upload documents in Learn, or switch to Teach and tell it something." }),
-      h("div", { class: "suggest" }, (hasDocs ? ["What have you learned so far?", "Summarise each document in two lines", "Compare the documents you know", "Which dates and deadlines do you know about?"] : ["What have you learned so far?"]).map(s => h("button", { class: "chip", text: s, onclick: () => { setMode("ask"); $("#q").value = s; send(); } })))));
+      h("p", { text: hasDocs ? `BRAIN has learned ${S.docs.size} document(s). Ask about them, or ask anything else: write and debug code, explain ideas, build apps. Answers that use your documents cite them.` : "BRAIN's memory is empty, but it can already answer questions, explain ideas and write code. Upload documents in Learn to give it your own knowledge." }),
+      h("div", { class: "suggest" }, (hasDocs ? ["What have you learned so far?", "Summarise each document in two lines", "Write a Hello World program in Java", "Compare the documents you know"] : ["Write a Hello World program in Java", "Explain object-oriented programming"]).map(s => h("button", { class: "chip", text: s, onclick: () => { setMode("ask"); $("#q").value = s; send(); } })))));
     return;
   }
   for (const m of S.chat) {
     const b = bubble(m.role, null);
     if (m.role === "user") b.textContent = m.content;
-    else finishAnswer(b, m.content, m.sources ? new Map(m.sources) : null);
+    else finishAnswer(b, m.content, m.sources ? new Map(m.sources) : null, m.basis);
   }
 }
-function finishAnswer(b, text, sources) {
+function finishAnswer(b, text, sources, basis) {
   b.innerHTML = renderMarkdown(text, sources);
+  if (basis && BASIS_LABEL[basis]) b.prepend(h("div", { class: "basis " + basis, title: "Where this answer came from" }, BASIS_LABEL[basis][0]));
   if (sources && sources.size) {
     const cited = [...new Set([...text.matchAll(/S\d+/g)].map(m => m[0]))].filter(id => sources.has(id));
     if (cited.length) b.append(h("div", { class: "sources" }, h("div", { class: "label", text: "Sources" }), cited.map(id => h("div", {}, h("b", { text: id }), sources.get(id).label))));
@@ -1535,17 +1596,23 @@ function catalog() {
 }
 function gatherSources(question) {
   const ctxText = question + " " + S.chat.filter(m => m.role === "user").slice(-2).map(m => m.content).join(" ");
-  // boost documents named in the question
-  const named = new Set([...S.docs.values()].filter(d => question.toLowerCase().includes(d.name.toLowerCase().replace(/\.[^.]+$/, ""))).map(d => d.id));
+  // Documents the question points at: named outright, or sharing words with the document's name or category ("my Java document").
+  const qTok = new Set(tokens(question).filter(t => !["document", "doc", "file", "pdf", "upload", "learn", "learned"].includes(t)));
+  const named = new Set([...S.docs.values()].filter(d => d.status !== "failed" && (
+    question.toLowerCase().includes(d.name.toLowerCase().replace(/\.[^.]+$/, "")) ||
+    tokens(d.name.replace(/\.[^.]+$/, "") + " " + (d.category || "")).some(t => qTok.has(t)))).map(d => d.id));
   let mems = search(ctxText, { kinds: ["mem"], limit: 22 });
   let chunks = search(ctxText, { kinds: ["chunk"], limit: 5 });
+  const pinned = [];
   if (named.size) {
-    mems = [...search(ctxText, { kinds: ["mem"], limit: 12, docIds: named }), ...mems];
+    // the named documents' summaries and key points always come along
+    for (const id of named) { const b = S.mem.get(id); if (b) pinned.push(...b.items.filter(m => m.type === "longterm").slice(0, 7).map(ref => ({ ref }))); }
+    mems = [...search(ctxText, { kinds: ["mem"], limit: 14, docIds: named }), ...mems];
     chunks = [...search(ctxText, { kinds: ["chunk"], limit: 3, docIds: named }), ...chunks];
   }
-  const seen = new Set(), sources = new Map(); const parts = []; let n = 0, budget = 26000;
+  const seen = new Set(), sources = new Map(); const parts = []; let n = 0, budget = 30000;
   const add = (label, body, meta) => { const key = meta; if (seen.has(key) || budget <= 0) return; seen.add(key); n++; const id = "S" + n; const text = clip(body, 1600); budget -= text.length; sources.set(id, { label }); parts.push(`<source id="${id}" from="${label.replace(/"/g, "'")}">\n${text}\n</source>`); };
-  for (const m of mems) add(srcLabel(m.ref) + ` (${MEM_TYPES[m.ref.type]?.label.toLowerCase() || "memory"} memory)`, m.ref.text, "m:" + m.ref.id);
+  for (const m of [...pinned, ...mems]) add(srcLabel(m.ref) + ` (${MEM_TYPES[m.ref.type]?.label.toLowerCase() || "memory"} memory)`, m.ref.text, "m:" + m.ref.id);
   for (const c of chunks) { const d = S.docs.get(c.docId); add((d ? d.name : "document") + " · " + c.ref.section + " (original text)", c.ref.text, "c:" + c.docId + ":" + c.idx); }
   return { sources, block: parts.join("\n") };
 }
@@ -1581,42 +1648,89 @@ async function learnLinkFromChat(raw) {
 }
 async function answer(q) {
   const b = bubble("assistant", null); b.innerHTML = '<span class="thinking">Retrieving memories</span>';
-  if (!S.sample) { const t = "Claude isn't available in this view, so BRAIN can't answer. Your stored knowledge is still browsable in Memory."; b.textContent = t; return; }
+  if (!S.sample) { const t = "Claude isn't available in this view, so BRAIN can't answer. Your stored knowledge is still browsable in Memory."; b.textContent = t; return { ok: false, code: "unavailable", message: "sample capability not available in this view" }; }
   const { sources, block } = gatherSources(q);
-  const history = S.chat.slice(-7, -1).map(m => `${m.role === "user" ? "User" : "BRAIN"}: ${clip(m.content.replace(/\[S\d+(?:,\s*S\d+)*\]/g, ""), 700)}`).join("\n");
-  const prompt = `You are BRAIN (Biological-inspired Reasoning and Artificial Intelligence Network), the user's personal knowledge brain. You answer ONLY from the knowledge provided below: the document catalog and the retrieved sources. ${UNTRUSTED_RULE}
-
-Rules:
-- Use only the catalog and sources. Do not use outside knowledge for facts about the user's documents or world facts they ask about.
-- Cite every factual sentence with source ids in square brackets, e.g. [S2] or [S1, S4]. Only cite ids that appear below. Never invent document names, pages or citations.
-- The catalog (D1, D2…) may be used to describe or compare documents; when you use it, name the document.
-- If the answer is not in the knowledge below, say plainly: "I haven't learned that yet." and, if helpful, what related things you do know. Partial answers must say what is missing.
-- If sources disagree, point out the disagreement instead of choosing silently.
-- Be concise. Use short paragraphs or bullet lists. For reports or comparisons, use headings (#) and bullets.
-
-DOCUMENT CATALOG (everything BRAIN has learned):
-${catalog()}
-
-RETRIEVED SOURCES:
-${block || "(no matching memories were found)"}
-
-${history ? `Conversation so far (short-term memory):\n${history}\n\n` : ""}User's question: ${q}`;
+  // Standing instructions first, then the real conversation (short-term memory), then this turn with its retrieved knowledge.
+  const history = S.chat.slice(-9, -1).filter(m => m.content && m.content.trim()).map(m => ({ role: m.role === "user" ? "user" : "assistant", content: clip(m.content.replace(/\[S\d+(?:,\s*S\d+)*\]/g, ""), m.role === "user" ? 6000 : 8000) }));
+  const turns = [
+    { role: "user", content: BRAIN_RULES + "\n\nDOCUMENT CATALOG (everything BRAIN has learned so far):\n" + catalog() },
+    ...history,
+    { role: "user", content: `LEARNED KNOWLEDGE retrieved for this message (may be empty or only partly relevant):\n${block || "(nothing relevant in memory)"}\n\nUSER'S MESSAGE:\n${q}` },
+  ];
   askCtl = new AbortController(); $("#stop").hidden = false; $("#send").disabled = true;
   S.busy++; pulseGraph("thinking about your question");
+  b.innerHTML = '<span class="thinking">Thinking</span>';
   try {
-    const r = await ai("answering", prompt, { options: { modelTier: S.tier, cache: false, signal: askCtl.signal, onText: ({ text }) => { b.innerHTML = renderMarkdown(text, sources); $("#thread").scrollTop = 1e9; } } });
-    finishAnswer(b, r.text, sources);
-    if (r.truncated) b.append(h("div", { class: "hint", text: "The answer was cut short. Ask for less at a time." }));
-    S.chat.push({ role: "assistant", content: r.text, sources: [...sources] }); saveChat();
+    const r = await ai("answering", turns, { options: { modelTier: S.tier, cache: false, signal: askCtl.signal, onText: ({ text }) => { b.innerHTML = renderMarkdown(splitBasis(text).text, sources); $("#thread").scrollTop = 1e9; } } });
+    const { text, basis } = splitBasis(r.text);
+    finishAnswer(b, text, sources, basis);
+    if (r.truncated) b.append(h("div", { class: "hint", text: "The answer reached the length limit. Send “continue” to get the rest." }));
+    S.chat.push({ role: "assistant", content: text, sources: [...sources], basis }); saveChat();
     logEvent("ask", `Asked: ${clip(q, 160)}`);
+    return { ok: true, text, basis, tier: r.modelTierApplied };
   } catch (e) {
-    if (e.text && e.code !== "refused") finishAnswer(b, e.text + "\n\n*(interrupted)*", sources); else b.textContent = "";
-    if (e.code !== "cancelled") b.append(h("div", { class: "hint", style: "color:var(--err)", text: aiErrorText(e) }));
+    if (e && e.text && e.code !== "refused") finishAnswer(b, splitBasis(e.text).text + "\n\n*(interrupted)*", sources); else b.textContent = "";
+    if (!e || e.code !== "cancelled") b.append(h("div", { class: "ai-error" }, h("b", { text: "Claude request failed. " }), aiErrorText(e), h("div", { class: "mono", text: `code: ${(e && e.code) || "unknown"}${e && e.message ? " · " + e.message : ""}` })));
+    return { ok: false, code: e && e.code, message: e && e.message };
   } finally {
-    S.busy--; pulseGraph(null); $("#stop").hidden = true; $("#send").disabled = false; askCtl = null; putMeta().catch(() => {});
+    S.busy--; setAgent(S.busy ? "busy" : (S.sample ? "on" : "bad")); pulseGraph(null); $("#stop").hidden = true; $("#send").disabled = false; askCtl = null; putMeta().catch(() => {});
   }
 }
+const BRAIN_RULES = `You are BRAIN (Biological-inspired Reasoning and Artificial Intelligence Network), the user's personal AI. You are a capable assistant, expert programmer and teacher who also has a private memory of what the user has taught you.
+
+You combine three kinds of intelligence:
+1. LEARNED KNOWLEDGE: the user's documents and memories, supplied with each message as <source> blocks and in the document catalog.
+2. NATIVE INTELLIGENCE: your own general knowledge, reasoning, mathematics and programming skills.
+3. COMBINED INTELLIGENCE: apply your reasoning to the learned knowledge to create new explanations, programs, plans and solutions.
+
+How to answer:
+- Always give a complete, genuinely useful answer. Never refuse or say "I haven't learned that" just because the documents don't contain it; answer from your own knowledge.
+- Use learned knowledge whenever it is relevant, and prefer it for anything about the user's own documents, projects, organisation, people or preferences. Cite it with source ids right after the sentence, e.g. [S2] or [S1, S4]. Only cite ids that appear in the sources. Never invent citations, document names or page numbers.
+- Content from your general knowledge needs no citation.
+- When the user asks what a document says and the documents don't cover it, say so plainly, then help from general knowledge and make clear which part is which.
+- If learned knowledge looks wrong or conflicts with well-established facts, point out both.
+- ${UNTRUSTED_RULE}
+
+Programming:
+- Write complete, runnable code in fenced Markdown blocks with a language tag (\`\`\`java, \`\`\`python, \`\`\`javascript, \`\`\`sql…). Include imports, the class/entry point and everything needed to run it. No placeholders like "// rest of code".
+- Follow the language's conventions, name files correctly (e.g. a public Java class goes in a file of the same name), and add short comments where they help.
+- After the code, briefly explain how it works and how to compile and run it, with sample output when useful.
+- Debugging: name the bug, explain the cause, then give the full corrected code.
+- Applications (e.g. Spring Boot, web apps): give the project structure, each file under a heading with its path, build files (pom.xml, build.gradle, package.json, requirements.txt), and run/test commands such as curl examples. If it is too long for one reply, deliver a working core first and say what to ask for next ("continue").
+- When asked to use concepts from the user's documents, name the concepts you use and cite where they come from.
+
+Format: Markdown with headings (#), bullet lists and tables where helpful. Be clear and well organised; match length to the question.
+
+On the very last line write exactly one of: BASIS: learned / BASIS: general / BASIS: combined (learned = mainly from the user's documents, general = mainly your own knowledge, combined = both).`;
+async function runAcceptanceTests() {
+  const tests = [
+    "Write a Hello World program in Java.",
+    "Write a Java program to add two numbers.",
+    "Explain object-oriented programming.",
+    "Generate a Spring Boot REST API.",
+    "Write a Python program to calculate factorial.",
+    "Explain what you learned from my Java document.",
+    "Generate a new Java program using concepts from the uploaded document.",
+    "What causes the seasons on Earth?",
+  ];
+  const out = $("#acc-results"); out.replaceChildren();
+  const rows = tests.map((t, i) => { const r = h("li", {}, h("span", { class: "pill", text: "waiting" }), ` ${i + 1}. ${t}`); out.append(r); return r; });
+  $("#acc-run").disabled = true;
+  go("ask"); setMode("ask");
+  for (let i = 0; i < tests.length; i++) {
+    rows[i].firstChild.textContent = "running"; rows[i].firstChild.className = "pill warn";
+    $("#q").value = tests[i];
+    const r = await send();
+    const code = r && r.ok && /```/.test(S.chat[S.chat.length - 1].content || "") ? " · code" : "";
+    rows[i].firstChild.textContent = r && r.ok ? `answered${code}${r.basis ? " · " + r.basis : ""}` : `failed: ${r ? r.code : "?"}`;
+    rows[i].firstChild.className = "pill " + (r && r.ok ? "ok" : "err");
+    if (r && !r.ok && ["not_granted", "sampling_disabled", "rate_limited", "session_expired", "unavailable"].includes(r.code)) { for (let j = i + 1; j < tests.length; j++) rows[j].firstChild.textContent = "skipped"; break; }
+  }
+  $("#acc-run").disabled = false;
+  logEvent("ask", "Ran the acceptance test questions in Ask Brain");
+}
 $("#stop").onclick = () => askCtl && askCtl.abort();
+$("#acc-run").onclick = () => runAcceptanceTests();
 $("#send").onclick = send;
 $("#q").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
 $("#clear-chat").onclick = () => { S.chat = []; saveChat(); renderThread(); renderMemory(); toast("Short-term memory cleared."); };
@@ -1658,7 +1772,7 @@ Reply with only JSON: {"memories":[{"text":"…","type":"semantic|procedural","k
     logEvent("teach", `You taught: ${clip(text, 160)}` + (conflicts.length ? ` (${conflicts.length} conflict)` : ""));
     renderAll();
   } catch (e) { b.textContent = aiErrorText(e); }
-  finally { S.busy--; }
+  finally { S.busy--; setAgent(S.busy ? "busy" : (S.sample ? "on" : "bad")); }
 }
 async function correct(text) {
   const b = bubble("assistant", null); b.innerHTML = '<span class="thinking">Finding the memories this affects</span>';
@@ -1692,7 +1806,7 @@ Only include memories that the correction actually contradicts or updates. If no
       card.append(acts); b.append(card);
     }
   } catch (e) { b.textContent = aiErrorText(e); }
-  finally { S.busy--; }
+  finally { S.busy--; setAgent(S.busy ? "busy" : (S.sample ? "on" : "bad")); }
 }
 
 /* ------------------------------ Memory operations ------------------------------ */
